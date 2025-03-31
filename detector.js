@@ -1,35 +1,116 @@
-function extractUrlFeatures(url) {
-    let urlLength = url.length;
-    let specialChars = (url.match(/[@\-_\.=&\/]/g) || []).length;
-    let ipPresent = /(\d{1,3}\.){3}\d{1,3}/.test(url);
-    let httpsUsed = url.startsWith("https") ? 1 : 0;
-    
-    return { urlLength, specialChars, ipPresent, httpsUsed };
-}
+document.addEventListener("DOMContentLoaded", function () {
+    const checkBtn = document.getElementById("checkBtn");
+    const urlInput = document.getElementById("urlInput");
+    const resultText = document.getElementById("result");
+    const darkModeToggle = document.getElementById("darkModeToggle");
+    const chartCanvas = document.getElementById("hitMissChart");
 
-function extractEmailFeatures(emailText) {
-    const SPAM_WORDS = ["urgent", "click", "verify", "password", "account", "login", "free", "credit card", "bank", "suspended"];
-    let words = emailText.toLowerCase().split(/\s+/);
-    let spamCount = words.filter(word => SPAM_WORDS.includes(word)).length;
-    let spamProbability = words.length > 0 ? spamCount / words.length : 0;
+    let chartInstance;
+    let hitCount = parseInt(localStorage.getItem("hitCount")) || 0;
+    let missCount = parseInt(localStorage.getItem("missCount")) || 0;
 
-    return { spamProbability };
-}
+    // NEED TO CORRECT MY DARK MODE TOGGLE BECAUSE IT IS NOT WORKING
+    if (localStorage.getItem("darkMode") === "enabled") {
+        document.body.classList.add("dark-mode");
+        if (darkModeToggle) darkModeToggle.checked = true;
+    }
 
-function detectPhishing(url, emailText) {
-    let urlFeatures = extractUrlFeatures(url);
-    let emailFeatures = extractEmailFeatures(emailText);
+    if (darkModeToggle) {
+        darkModeToggle.addEventListener("change", function () {
+            if (this.checked) {
+                document.body.classList.add("dark-mode");
+                localStorage.setItem("darkMode", "enabled");
+            } else {
+                document.body.classList.remove("dark-mode");
+                localStorage.setItem("darkMode", "disabled");
+            }
+        });
+    }
 
-    // Simple detection logic (Scoring System)
-    let phishingScore = 0;
+    // ✅ Chart Initialization
+    function initializeChart() {
+        if (!chartCanvas) return console.error("❌ No chart found!");
 
-    if (urlFeatures.urlLength > 40) phishingScore += 1;
-    if (urlFeatures.specialChars > 5) phishingScore += 1;
-    if (urlFeatures.ipPresent) phishingScore += 2;
-    if (!urlFeatures.httpsUsed) phishingScore += 1;
-    if (emailFeatures.spamProbability > 0.2) phishingScore += 2;
+        chartInstance = new Chart(chartCanvas.getContext("2d"), {
+            type: "bar",
+            data: {
+                labels: ["Phishing Detected", "Missed Cases"],
+                datasets: [{
+                    label: "Detection Stats",
+                    data: [hitCount, missCount],
+                    backgroundColor: ["green", "red"]
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    }
 
-    return phishingScore >= 3 ? "🚨 Phishing Detected!" : "✅ Looks Safe!";
-}
+    // ✅ Function to Update Chart
+    function updateChart() {
+        if (chartInstance) {
+            chartInstance.data.datasets[0].data = [hitCount, missCount];
+            chartInstance.update();
+        }
+    }
 
-window.detectPhishing = detectPhishing;
+    // ✅ Normalize the URL to avoid partial matching issues
+    function normalizeUrl(url) {
+        return url.trim().toLowerCase().replace(/\/$/, '');
+    }
+
+    // ✅ Function to Check Against Local `phishing_list.js`
+    function checkWithPhishingList(url) {
+        if (typeof phishingUrls === "undefined") {
+            console.error("❌ phishingUrls is not loaded! Check phishing_list.js");
+            return "❌ Error: Phishing list not loaded!";
+        }
+
+        // Normalize URL for comparison
+        const normalizedUrl = normalizeUrl(url);
+
+        // Check if the URL exists in the phishing list
+        const isPhishing = phishingUrls.some(phishingUrl => {
+            const normalizedPhishingUrl = normalizeUrl(phishingUrl);
+            return normalizedUrl.includes(normalizedPhishingUrl);
+        });
+
+        return isPhishing ? "🚨 Phishing Detected!" : "✅ Looks Safe!";
+    }
+
+    // ✅ Single Event Listener for Checking URLs
+    checkBtn.addEventListener("click", function () {
+        let url = urlInput.value.trim();
+        if (!url) {
+            resultText.textContent = "❌ Please enter a URL!";
+            resultText.className = "danger";
+            resultText.style.opacity = "1";
+            return;
+        }
+
+        resultText.textContent = "🔄 Checking...";
+        resultText.style.opacity = "1";
+
+        // Check against phishing_list.js
+        let phishingResult = checkWithPhishingList(url);
+        resultText.textContent = phishingResult;
+        resultText.className = phishingResult.includes("Phishing") ? "danger" : "safe";
+
+        if (phishingResult.includes("Phishing")) {
+            hitCount++;
+        } else {
+            missCount++;
+        }
+
+        localStorage.setItem("hitCount", hitCount);
+        localStorage.setItem("missCount", missCount);
+        updateChart();
+    });
+
+    // ✅ Initialize the chart when the page loads
+    initializeChart();
+});
